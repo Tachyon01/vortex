@@ -12,6 +12,7 @@
 // limitations under the License.
 
 `include "VX_cache_define.vh"
+`include "VX_tlb_define.vh"
 
 module VX_tlb_bank #(
     parameter `STRING INSTANCE_ID = "",
@@ -113,8 +114,11 @@ module VX_tlb_bank #(
     reg [TLB_WAYS-1:0] tag_valid [ENTRIES_PER_BANK / TLB_WAYS];
     reg [TLB_WAYS-1:0][TLB_TAG_WIDTH-1:0] tag_data [ENTRIES_PER_BANK / TLB_WAYS];
 
-    // TLB data array (PPN storage)
-    reg [TLB_WAYS-1:0][TLB_DATA_WIDTH-1:0] data_array [ENTRIES_PER_BANK / TLB_WAYS];
+    // TLB data array (PPN + flags storage)
+    reg [TLB_WAYS-1:0][TLB_DATA_WIDTH-1:0] data_ppn [ENTRIES_PER_BANK / TLB_WAYS];  // Physical Page Number
+    reg [TLB_WAYS-1:0][7:0] data_flags [ENTRIES_PER_BANK / TLB_WAYS];  // Access control flags
+    reg [TLB_WAYS-1:0] data_mru [ENTRIES_PER_BANK / TLB_WAYS];  // Most Recently Used bit
+    reg [TLB_WAYS-1:0][5:0] data_size [ENTRIES_PER_BANK / TLB_WAYS];  // Page size in bits (log2)
 
     // Tag matching - combinational logic
     for (genvar i = 0; i < TLB_WAYS; ++i) begin : g_tlb_ways
@@ -128,16 +132,21 @@ module VX_tlb_bank #(
     wire [TLB_WAY_SEL_WIDTH-1:0] update_way;
     wire [TLB_TAG_WIDTH-1:0] update_vpn;
     wire [TLB_DATA_WIDTH-1:0] update_ppn;
+    wire [7:0] update_flags;
+    wire update_mru;
+    wire [5:0] update_size;
 
     VX_pipe_register #(
-        .DATAW  (1 + TLB_INDEX_BITS + TLB_WAY_SEL_WIDTH + TLB_TAG_WIDTH + TLB_DATA_WIDTH),
+        .DATAW  (1 + TLB_INDEX_BITS + TLB_WAY_SEL_WIDTH + TLB_TAG_WIDTH + TLB_DATA_WIDTH + 8 + 1 + 6),
         .RESETW (1)
     ) update_pipe (
         .clk      (clk),
         .reset    (reset),
         .enable   (1'b1),
-        .data_in  ({tlb_update_fire, req_index, repl_way, tlb_update_vpn, tlb_update_ppn}),
-        .data_out ({update_valid, update_index, update_way, update_vpn, update_ppn})
+        .data_in  ({tlb_update_fire, req_index, repl_way, tlb_update_vpn, 
+                   tlb_update_ppn, 8'hFF, 1'b1, 6'd12}), // Default flags: all permissions, MRU=1, 4KB page
+        .data_out ({update_valid, update_index, update_way, update_vpn, 
+                   update_ppn, update_flags, update_mru, update_size})
     );
 
     // Update tag and data arrays
@@ -145,7 +154,10 @@ module VX_tlb_bank #(
         if (update_valid) begin
             tag_valid[update_index][update_way] = 1'b1;
             tag_data[update_index][update_way] = update_vpn;
-            data_array[update_index][update_way] = update_ppn;
+            data_ppn[update_index][update_way] = update_ppn;
+            data_flags[update_index][update_way] = update_flags;
+            data_mru[update_index][update_way] = update_mru;
+            data_size[update_index][update_way] = update_size;
         end
     end
 
@@ -172,14 +184,12 @@ module VX_tlb_bank #(
     end
 
     // PPN Mux - selects the correct PPN based on which way had a hit
-    // For example, if tag_matches = 4'b0010 (way 1 matched), then hit_way = 1
-    // and we select data_array[req_index][1] as our translated PPN
     VX_mux #(
         .N (TLB_WAYS)
     ) ppn_mux (
-        .data_in  (data_array[req_index]),  // Array of PPNs from all ways at this index
-        .sel_in   (hit_way),                // Which way had a hit (from one-hot encoder)
-        .data_out (hit_ppn)                 // Selected PPN for translation
+        .data_in  (data_ppn[req_index]),  // Array of PPNs from all ways at this index
+        .sel_in   (hit_way),              // Which way had a hit (from one-hot encoder)
+        .data_out (hit_ppn)               // Selected PPN for translation
     );
 
     // PLRU replacement policy

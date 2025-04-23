@@ -12,6 +12,7 @@
 // limitations under the License.
 
 `include "VX_cache_define.vh"
+`include "VX_tlb_define.vh"
 
 module VX_tlb import VX_gpu_pkg::*; #(
     parameter `STRING INSTANCE_ID   = "",
