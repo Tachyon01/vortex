@@ -249,10 +249,11 @@ uint64_t MemoryUnit::toPhyAddr(uint64_t addr, uint32_t flagMask) {
 #endif
 
 #ifdef VM_ENABLE
-void MemoryUnit::read(void* data, uint64_t addr, uint32_t size, ACCESS_TYPE type) {
+void MemoryUnit::read(void* data, uint64_t* p_addr, uint64_t addr, uint32_t size, ACCESS_TYPE type) {
   DBGPRINT("  [MMU:read] 0x%lx, 0x%x, %u\n",addr,size,type);
   uint64_t pAddr;
   pAddr = vAddr_to_pAddr(addr, type);
+  *p_addr = pAddr;
   return decoder_.read(data, pAddr, size);
 }
 #else
@@ -262,10 +263,11 @@ void MemoryUnit::read(void* data, uint64_t addr, uint32_t size, bool sup) {
 }
 #endif
 #ifdef VM_ENABLE
-void MemoryUnit::write(const void* data, uint64_t addr, uint32_t size, ACCESS_TYPE type) {
+void MemoryUnit::write(const void* data, uint64_t* p_addr, uint64_t addr, uint32_t size, ACCESS_TYPE type) {
   DBGPRINT("  [MMU:Write] 0x%lx, 0x%x, %u\n",addr,size,type);
   uint64_t pAddr;
   pAddr = vAddr_to_pAddr(addr, type);
+  *p_addr = pAddr;
   decoder_.write(data, pAddr, size);
   amo_reservation_.valid = false;
 }

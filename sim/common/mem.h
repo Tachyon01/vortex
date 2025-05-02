@@ -199,8 +199,8 @@ public:
 
 
 #ifdef VM_ENABLE
-  void read(void* data, uint64_t addr, uint32_t size, ACCESS_TYPE type = ACCESS_TYPE::LOAD);
-  void write(const void* data, uint64_t addr, uint32_t size, ACCESS_TYPE type = ACCESS_TYPE::STORE);
+  void read(void* data, uint64_t* p_addr, uint64_t addr, uint32_t size, ACCESS_TYPE type = ACCESS_TYPE::LOAD);
+  void write(const void* data, uint64_t* p_addr, uint64_t addr, uint32_t size, ACCESS_TYPE type = ACCESS_TYPE::STORE);
 #else
   void read(void* data, uint64_t addr, uint32_t size, bool sup);
   void write(const void* data, uint64_t addr, uint32_t size, bool sup);

@@ -683,7 +683,13 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
           continue;
         uint64_t mem_addr = rsdata[t][0].i + immsrc;
         uint64_t read_data = 0;
-        this->dcache_read(&read_data, mem_addr, data_bytes);
+        uint64_t p_addr = 0;
+        #ifdef VM_ENABLE
+          this->dcache_read(&read_data, &p_addr, mem_addr, data_bytes);
+          trace->data_phys_addr = p_addr;
+        #else
+          this->dcache_read(&read_data, mem_addr, data_bytes);
+        #endif
         trace_data->mem_addrs.at(t) = {mem_addr, data_bytes};
         switch (func3) {
         case 0: // RV32I: LB
@@ -737,13 +743,19 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
           continue;
         uint64_t mem_addr = rsdata[t][0].i + immsrc;
         uint64_t write_data = rsdata[t][1].u64;
+        uint64_t p_addr = 0;
         trace_data->mem_addrs.at(t) = {mem_addr, data_bytes};
         switch (func3) {
         case 0:
         case 1:
         case 2:
         case 3:
+          #ifdef VM_ENABLE
+            this->dcache_write(&write_data, &p_addr, mem_addr, data_bytes);
+            trace->data_phys_addr = p_addr;
+          #else
           this->dcache_write(&write_data, mem_addr, data_bytes);
+          #endif
           break;
         default:
           std::abort();
@@ -774,20 +786,38 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
       trace_data->mem_addrs.at(t) = {mem_addr, data_bytes};
       if (amo_type == 0x02) { // LR
         uint64_t read_data = 0;
-        this->dcache_read(&read_data, mem_addr, data_bytes);
+        uint64_t p_addr = 0;
+        #ifdef VM_ENABLE
+          this->dcache_read(&read_data, &p_addr, mem_addr, data_bytes);
+          trace->data_phys_addr = p_addr;
+        #else
+          this->dcache_read(&read_data, mem_addr, data_bytes);
+        #endif
         this->dcache_amo_reserve(mem_addr);
         rddata[t].i = sext((Word)read_data, data_width);
       } else
       if (amo_type == 0x03) { // SC
         if (this->dcache_amo_check(mem_addr)) {
+          uint64_t p_addr = 0;
+          #ifdef VM_ENABLE
+            this->dcache_write(&rsdata[t][1].u64, &p_addr, mem_addr, data_bytes);
+            trace->data_phys_addr = p_addr;
+          #else
           this->dcache_write(&rsdata[t][1].u64, mem_addr, data_bytes);
+          #endif
           rddata[t].i = 0;
         } else {
           rddata[t].i = 1;
         }
       } else {
         uint64_t read_data = 0;
+        uint64_t p_addr = 0;
+        #ifdef VM_ENABLE
+          this->dcache_read(&read_data, &p_addr, mem_addr, data_bytes);
+          trace->data_phys_addr = p_addr;
+        #else
         this->dcache_read(&read_data, mem_addr, data_bytes);
+        #endif
         auto read_data_i = sext((WordI)read_data, data_width);
         auto rs1_data_i  = sext((WordI)rsdata[t][1].u64, data_width);
         auto read_data_u = zext((Word)read_data, data_width);
@@ -824,7 +854,13 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
         default:
           std::abort();
         }
+        uint64_t p_addr = 0;
+        #ifdef VM_ENABLE
+          this->dcache_write(&result, &p_addr, mem_addr, data_bytes);
+          trace->data_phys_addr = p_addr;
+        #else
         this->dcache_write(&result, mem_addr, data_bytes);
+        #endif
         rddata[t].i = read_data_i;
       }
     }
@@ -1509,7 +1545,12 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
             for (int n=0; n<num_data_per_thread; n++)
             {
               Word* temp_ref = &(warp.ireg_file.at(t).at(rsrc0));
+              #ifdef VM_ENABLE
+                this->dcache_read(temp_ref, &p_addr, (base_addr+(n*mem_bytes)+(loop_offset*mem_bytes)), mem_bytes);
+                trace->data_phys_addr = p_addr;
+              #else
               this->dcache_read(temp_ref, (base_addr+(n*mem_bytes)+(loop_offset*mem_bytes)), mem_bytes);
+              #endif
 
               scratchpad[loop_offset + (immsrc*(n_tiles)*tc_size*tc_size) + (t*num_data_per_thread) + n] = *temp_ref;
               DP(3, "Scratchpad Index: " << loop_offset + (immsrc*(n_tiles)*tc_size*tc_size) + (t*num_data_per_thread) + n << ", Value: " << scratchpad[loop_offset + (immsrc*(n_tiles)*tc_size*tc_size) + (t*num_data_per_thread) + n]);
@@ -1542,7 +1583,13 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
             Word* temp_ref = &(warp.ireg_file.at(t).at(rsrc0));
             *temp_ref = scratchpad[(n_tiles*tc_size*tc_size*2) + (t*num_data_per_thread_st) + n];
 
+            uint64_t p_addr = 0;
+            #ifdef VM_ENABLE
+              this->dcache_write(&temp_ref, &p_addr, base_addr+(n*mem_bytes), mem_bytes);
+              trace->data_phys_addr = p_addr;
+            #else
             this->dcache_write(temp_ref, base_addr+(n*mem_bytes), mem_bytes);
+            #endif
           }
         }
         //Clear the scratchpad
